@@ -4,14 +4,10 @@ import torch, math
 class PrivateDiff(torch.optim.Optimizer):
 
     def __init__(self, params, loss_fn, lr, lr_alpha, c1, c2, c_y, sigma1, sigma2, sigma_alpha, inner_iters, T) -> None:
-        try:
-            self.a = loss_fn.a
-            self.b = loss_fn.b
-            self.alpha = loss_fn.alpha
-        except:
-            print("AUCMLoss is not found!")
-
-        self.params = list(params)
+        self.params = [p for p in params]
+        self.a = getattr(loss_fn, "a", None)
+        self.b = getattr(loss_fn, "b", None)
+        self.alpha = getattr(loss_fn, "alpha", None)
         self.lr = lr
         self.lr_alpha = lr_alpha
         self.c1 = c1
@@ -22,8 +18,14 @@ class PrivateDiff(torch.optim.Optimizer):
         self.sigma_alpha = sigma_alpha
         self.inner_iters = inner_iters
         self.T = T
+
         if self.a is not None and self.b is not None:
-            self.params = self.params + [self.a, self.b]
+            self.params.extend([self.a, self.b])
+
+        if self.alpha is None:
+            base_device = self.params[0].device if self.params else torch.device("cpu")
+            self.alpha = torch.nn.Parameter(torch.zeros(1, device=base_device))
+            self.params.append(self.alpha)
 
         defaults = dict(
             lr=self.lr,
@@ -37,7 +39,11 @@ class PrivateDiff(torch.optim.Optimizer):
         super(PrivateDiff, self).__setstate__(state)
 
     def zero_grad(self, set_to_none: bool = True) -> None:
-        self.alpha.grad = None
+        if self.alpha is not None:
+            if set_to_none:
+                self.alpha.grad = None
+            elif self.alpha.grad is not None:
+                self.alpha.grad.zero_()
         return super().zero_grad(set_to_none)
 
     @torch.no_grad()
@@ -121,4 +127,3 @@ class PrivateDiff(torch.optim.Optimizer):
                     param_state["update_buffer"] = torch.clone(v).detach()
 
         self.zero_grad()
-
