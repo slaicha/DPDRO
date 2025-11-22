@@ -2,8 +2,9 @@
 CIFAR10/
 data/
 Baseline/SGDA/data/
+MIA/splits/
+MIA/outputs/
 
 # Python bytecode and caches
 __pycache__/
 *.pyc
-
