@@ -2,16 +2,14 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.backends.cudnn as cudnn
 import torchvision
 import torchvision.transforms as transforms
 import numpy as np
 import math
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset
 
 # --- ResNet20 Model Definition ---
-# A standard ResNet implementation for CIFAR-10 (like ResNet20)
-# This model will represent your 'x' parameters.
+
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -19,18 +17,17 @@ class BasicBlock(nn.Module):
     def __init__(self, in_planes, planes, stride=1):
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(
-            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
 
         self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != self.expansion*planes:
+        if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * planes),
             )
 
     def forward(self, x):
@@ -40,21 +37,20 @@ class BasicBlock(nn.Module):
         out = F.relu(out)
         return out
 
-class ResNet(nn.Module):
+class ResNetImpl(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10):
-        super(ResNet, self).__init__()
+        super().__init__()
         self.in_planes = 16
 
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
-        self.linear = nn.Linear(64*block.expansion, num_classes)
+        self.linear = nn.Linear(64 * block.expansion, num_classes)
 
     def _make_layer(self, block, planes, num_blocks, stride):
-        strides = [stride] + [1]*(num_blocks-1)
+        strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
             layers.append(block(self.in_planes, planes, stride))
@@ -71,14 +67,13 @@ class ResNet(nn.Module):
         out = self.linear(out)
         return out
 
+
 def ResNet20():
-    return ResNet(BasicBlock, [3, 3, 3])
+    return ResNetImpl(BasicBlock, [3, 3, 3])
+
 
 # --- Imbalanced CIFAR-10 Dataset ---
-# Constructs the dataset as specified:
-# - First 5 classes: last 100 images
-# - Last 5 classes: all images (5000)
-# - Total size (n) = 5*100 + 5*5000 = 25,500
+
 
 class CustomImbalancedCIFAR10(Dataset):
     def __init__(self, root, train=True, transform=None, download=True):
@@ -92,11 +87,9 @@ class CustomImbalancedCIFAR10(Dataset):
         indices = []
         for c in range(10):
             class_indices = np.where(self.targets == c)[0]
-            if c < 5:  # First half classes
-                # Get last 100 images
+            if c < 5:
                 indices.extend(class_indices[-100:])
-            else:  # Second half classes
-                # Keep all images
+            else:
                 indices.extend(class_indices)
         return indices
 
@@ -107,15 +100,12 @@ class CustomImbalancedCIFAR10(Dataset):
         original_idx = self.indices[idx]
         return self.cifar_dataset[original_idx]
 
-    def get_full_dataset_size(self):
-        return len(self.cifar_dataset.targets)
-
 
 # --- Standard Training & Testing Loop ---
-# Added to get baseline classification accuracy
+
 
 def train_standard(epoch, model, train_loader, optimizer, criterion, device):
-    print(f'\nEpoch: {epoch}')
+    print(f"\nEpoch: {epoch}")
     model.train()
     train_loss = 0
     correct = 0
@@ -134,7 +124,10 @@ def train_standard(epoch, model, train_loader, optimizer, criterion, device):
         correct += predicted.eq(targets).sum().item()
 
         if batch_idx % 10 == 0 or batch_idx == len(train_loader) - 1:
-            print(f'  Batch {batch_idx}/{len(train_loader)}: Loss: {train_loss/(batch_idx+1):.3f} | Acc: {100.*correct/total:.3f}% ({correct}/{total})')
+            print(
+                f"  Batch {batch_idx}/{len(train_loader)}: Loss: {train_loss/(batch_idx+1):.3f} | Acc: {100.*correct/total:.3f}% ({correct}/{total})"
+            )
+
 
 def test_standard(epoch, model, test_loader, criterion, device):
     model.eval()
@@ -142,27 +135,60 @@ def test_standard(epoch, model, test_loader, criterion, device):
     correct = 0
     total = 0
     with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(test_loader):
+        for inputs, targets in test_loader:
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
             loss = criterion(outputs, targets)
-
             test_loss += loss.item()
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
-    
-    acc = 100.*correct/total
-    print(f'Test Results for Epoch {epoch}: Loss: {test_loss/len(test_loader):.3f} | Acc: {acc:.3f}% ({correct}/{total})')
+
+    acc = 100.0 * correct / total
+    print(f"Test Results for Epoch {epoch}: Loss: {test_loss/len(test_loader):.3f} | Acc: {acc:.3f}% ({correct}/{total})")
     return acc
 
 
-# --- DP Double-Spider Algorithm ---
+# --- DP Double-SPIDER Algorithm (with clipping) ---
+
+
+def clip_vector(x, C):
+    norm = torch.norm(x)
+    if norm <= C or C <= 0:
+        return x
+    return x * (C / norm)
+
 
 class DPDoubleSpiderTrainer:
-    def __init__(self, T, q, epsilon, delta, n, d,
-                 L0, L1, L2, D0, D1, D2, H, G, M, lambda_val, c,
-                 max_practical_bs=256):
+    def __init__(
+        self,
+        *,
+        T,
+        q,
+        epsilon,
+        delta,
+        n,
+        d,
+        L0,
+        L1,
+        L2,
+        D0,
+        D1,
+        D2,
+        H,
+        G,
+        M,
+        lambda_val,
+        C1,
+        C2,
+        C3,
+        C4,
+        N1,
+        N2,
+        N3,
+        N4,
+        num_workers=2,
+    ):
         self.T = T
         self.q = q
         self.epsilon = epsilon
@@ -175,317 +201,180 @@ class DPDoubleSpiderTrainer:
         self.G = G
         self.M = M
         self.lambda_val = lambda_val
-        self.c = c
-        self.max_practical_bs = max_practical_bs # Practical cap
+        self.C1, self.C2, self.C3, self.C4 = C1, C2, C3, C4
+        self.N1, self.N2, self.N3, self.N4 = N1, N2, N3, N4
+        self.num_workers = num_workers
 
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # --- Calculate Algorithm Parameters (from paper) ---
-        self.c0 = max(32 * self.L2, 8 * self.L0)
-        self.c1 = (4 + (8 * self.L1**2 * self.D2) / (self.n * self.L0**2) +
-                   (32 * self.L1**2 * self.D2) / (self.n * self.L0**2) +
-                   (16 * self.L1**2 * self.L2) / (5 * self.D1 * self.L0**3))
-        self.c2 = max((1 / (8 * self.L2)) + (self.L1 / self.L0**3), 1)
-        self.c3 = (1 + (self.L2 / (10 * self.L0)) +
-                   (self.L0 * self.D1 + self.L0 + 2 * self.L0 * self.L2 * self.D2) / self.L2 +
-                   (33 * self.L2**2) / (5 * self.L0 * self.L2) + (self.L1**2) / (15 * self.L2**3) +
-                   (self.L1**2) / (2 * self.L0 * self.L2**2))
-        self.c4 = 17/4 + math.sqrt(self.c3) + math.sqrt(1 / (60 * self.L2))
-        
-        # --- Calculate Batch Sizes (N1 to N4) ---
-        self.N1 = math.ceil((6 * self.D2 * self.c0 * self.c2) / self.epsilon**2)
-        
-        self.N2 = math.ceil(max(
-            (20 * self.q * self.D1 * self.L2) / self.L0,
-            20 * self.q * self.c2 * self.L2,
-            (12 * self.q * self.L1**2 * self.c0 * self.c2) / self.L0**2,
-            self.q
-        ))
-        
-        self.N3 = math.ceil(max(
-            (200 * self.D1 * self.L2) / self.L0,
-            (3 * self.c0 * (self.D0 + 4 * self.D1 * self.D2) * self.n) / (2 * self.L0)
-        ))
-        
-        self.N4 = math.ceil(max(
-            (5 * self.q * self.L2) / self.L0,
-            (6 * self.q * self.c1 * self.c0) / self.L0
-        ))
-        
-        print("Algorithm Parameters:")
-        print(f"  N1 (batch size): {self.N1}")
-        print(f"  N2 (batch size): {self.N2}")
-        print(f"  N3 (batch size): {self.N3}")
-        print(f"  N4 (batch size): {self.N4}")
-        print(f"  q (epoch size): {self.q}")
-        print(f"  T (iterations): {self.T}")
+        # Step sizes
+        self.alpha = 1.0 / (4.0 * self.L2)
+        self.beta_term1 = 1.0 / (2.0 * self.L0 + self.L1 * math.sqrt(self.H))
 
-        # --- Calculate Noise Parameters ---
-        self.log_delta = math.log(1.0 / self.delta)
-        self.sqrt_T_over_n_q = math.sqrt(self.T) / (self.n * math.sqrt(self.q))
+        # Noise scales (big-O constants set to 1)
+        log_delta = math.log(1.0 / self.delta)
+        sqrt_term = math.sqrt(self.T) / (self.n * math.sqrt(self.q))
+        self.sigma1 = (self.C1 * math.sqrt(self.T * log_delta)) / (self.n * math.sqrt(self.q) * self.epsilon)
+        self.sigma2 = (self.C2 * math.sqrt(log_delta)) / (self.N2 * self.epsilon)
+        self.sigma3 = (self.C3 * math.sqrt(self.T * log_delta)) / (self.n * math.sqrt(self.q) * self.epsilon)
+        self.sigma4 = (self.C4 * math.sqrt(log_delta)) / self.epsilon * max(1.0 / self.N4, sqrt_term)
 
-        self.sigma1 = ( (self.c * self.L2 * math.sqrt(self.log_delta)) / self.epsilon *
-                        max(1.0 / self.N1, self.sqrt_T_over_n_q) )
+    def _get_loader(self, dataset, batch_size):
+        bs = min(batch_size, self.n)
+        return DataLoader(dataset, batch_size=bs, shuffle=True, num_workers=self.num_workers, pin_memory=True)
 
-        # sigma2 base, will be multiplied by L_N2
-        self.sigma2_base = ( (self.c * math.sqrt(self.log_delta)) / (self.n * self.epsilon) ) 
-        
-        self.sigma3 = ( (self.c * (self.L0 + self.L1 * math.sqrt(self.H)) * math.sqrt(self.log_delta)) / self.epsilon *
-                        max(1.0 / self.N2, self.sqrt_T_over_n_q) ) # N2 in paper? N3 in alg? Assuming N3
+    @staticmethod
+    def _flatten_params(model):
+        return torch.cat([p.detach().view(-1) for p in model.parameters()])
 
-        # sigma4 base, will be multiplied by L_N4 * max{...}
-        self.sigma4_base = ( (self.c * math.sqrt(self.log_delta)) / self.epsilon )
-        self.sigma4_mult = max(1.0 / self.N4, self.sqrt_T_over_n_q)
-
-        # --- Step Sizes ---
-        self.alpha_t = 1.0 / (4.0 * self.L2)
-        # beta_t is dynamic, depends on v_t
-
-    def get_loader(self, dataset, batch_size, name):
-        """Helper to get a DataLoader, capping batch size."""
-        practical_bs = batch_size
-        
-        if batch_size > self.max_practical_bs:
-            print(f"WARNING: Theoretical batch size {name}={batch_size} is too large. Capping at {self.max_practical_bs}.")
-            practical_bs = self.max_practical_bs
-        
-        if practical_bs > self.n:
-            print(f"WARNING: Batch size {name}={practical_bs} > dataset size {self.n}. Setting to {self.n}.")
-            practical_bs = self.n
-
-        return DataLoader(
-            dataset,
-            batch_size=practical_bs,
-            shuffle=True,
-            num_workers=2,
-            pin_memory=True
-        )
-
-    def _get_LN2(self, eta_t, eta_t_minus_1, x_t, x_t_minus_1):
-        """ L_N2 = 2*max{L2*||eta_t-eta_{t-1}||, GM*||x_t-x_{t-1}||/lambda } """
+    @staticmethod
+    def _load_params(model, flat):
+        offset = 0
         with torch.no_grad():
-            eta_diff_norm = torch.norm(eta_t - eta_t_minus_1)
-            x_diff_norm = torch.norm(x_t - x_t_minus_1)
-            
-            term1 = self.L2 * eta_diff_norm
-            term2 = (self.G * self.M * x_diff_norm) / self.lambda_val
-            return 2 * torch.max(term1, term2)
-    
-    def _get_LN4(self, eta_t, eta_t_minus_1, x_t, x_t_minus_1):
-        """ L_N4 = 2*max{ML*||eta_t-eta_{t-1}||/lambda, (L0+L1*sqrt(H))*||x_t-x_{t-1}||} """
-        with torch.no_grad():
-            eta_diff_norm = torch.norm(eta_t - eta_t_minus_1)
-            x_diff_norm = torch.norm(x_t - x_t_minus_1)
+            for param in model.parameters():
+                numel = param.numel()
+                param.data.copy_(flat[offset : offset + numel].view_as(param))
+                offset += numel
 
-            term1 = (self.M * self.G * eta_diff_norm) / self.lambda_val # Using G for L
-            term2 = (self.L0 + self.L1 * math.sqrt(self.H)) * x_diff_norm
-            return 2 * torch.max(term1, term2)
+    @staticmethod
+    def _grad_wrt(loss, params):
+        grads = torch.autograd.grad(loss, params, retain_graph=False, create_graph=False, allow_unused=False)
+        return torch.cat([g.view(-1) for g in grads])
 
-    def compute_gradient(self, params_list, loss):
-        """Computes gradient w.r.t. a specific list of parameters."""
-        # We must set create_graph=False to avoid OOM errors
-        # This was the cause of the "Killed" error
-        grads = torch.autograd.grad(loss, params_list, create_graph=False)
-        # Manually detach and concatenate
-        return torch.cat([g.detach().view(-1) for g in grads])
+    @staticmethod
+    def _psi_star(t):
+        return 0.25 * t ** 2 + t
 
-    def train(self, x_model, eta_params, full_dataset):
-        """Implements Algorithm 1: DP Double-Spider."""
-        
-        print("Starting DP Double-Spider Training...")
-        
-        # --- Loss Function (from prompt) ---
-        # L(x,eta,S) = lambda * psi*((ell(x,S) - G*eta)/lambda) + G*eta
-        # psi*(t) = -1 + 1/4(t+2)^2 = 0.25*t^2 + t
-        
-        def loss_function(model, eta, data_batch, targets_batch):
-            # 1. Get cross entropy loss, ell(x,S)
-            outputs = model(data_batch)
-            # Compute loss per sample, not mean
-            ell_x_S = F.cross_entropy(outputs, targets_batch, reduction='none') 
-            
-            # 2. Compute psi*(...)
-            # We must average ell_x_S to match the scalar eta
-            ell_x_S_mean = ell_x_S.mean()
-            
-            t = (ell_x_S_mean - self.G * eta) / self.lambda_val
-            psi_star = 0.25 * t**2 + t
-            
-            # 3. Compute final loss
-            L = self.lambda_val * psi_star + self.G * eta
-            return L
+    def _dro_loss(self, model, eta, data, targets):
+        outputs = model(data)
+        ell = F.cross_entropy(outputs, targets, reduction="none")
+        psi_in = (ell - eta) / self.lambda_val
+        psi_val = self._psi_star(psi_in)
+        return self.lambda_val * psi_val.mean() + eta
 
-        # --- Dataloaders ---
-        loader1 = self.get_loader(full_dataset, self.N1, "N1")
-        loader2 = self.get_loader(full_dataset, self.N2, "N2")
-        loader3 = self.get_loader(full_dataset, self.N3, "N3")
-        loader4 = self.get_loader(full_dataset, self.N4, "N4")
-        
-        # Use iterators to draw batches
-        iter1 = iter(loader1)
-        iter2 = iter(loader2)
-        iter3 = iter(loader3)
-        iter4 = iter(loader4)
-        
-        # Helper to refresh iterator
-        def get_batch(iterator, loader):
+    def train(self, model, eta_init, dataset):
+        print("Starting DP Double-SPIDER training loop")
+        model = model.to(self.device)
+        eta_t = eta_init.to(self.device).detach().clone()
+        eta_t.requires_grad_(True)
+        eta_prev = eta_t.detach().clone()
+
+        x_t = self._flatten_params(model).to(self.device)
+        x_prev = x_t.clone()
+
+        g_t = torch.zeros_like(eta_t)
+        v_t = torch.zeros_like(x_t)
+
+        loader1 = self._get_loader(dataset, self.N1)
+        loader2 = self._get_loader(dataset, self.N2)
+        loader3 = self._get_loader(dataset, self.N3)
+        loader4 = self._get_loader(dataset, self.N4)
+
+        it1, it2, it3, it4 = iter(loader1), iter(loader2), iter(loader3), iter(loader4)
+
+        def next_batch(it_obj, loader):
             try:
-                return next(iterator)
+                return next(it_obj), it_obj
             except StopIteration:
-                iterator = iter(loader)
-                return next(iterator)
+                it_new = iter(loader)
+                return next(it_new), it_new
 
-        # --- Model and Parameter Setup ---
-        x_model = x_model.to(self.device)
-        eta_params = eta_params.to(self.device)
-        
-        # Get flattened parameter vectors
-        x_params_list = list(x_model.parameters())
-        eta_params_list = [eta_params] # eta is just one parameter
-        
-        with torch.no_grad():
-            x_t = torch.cat([p.view(-1) for p in x_params_list])
-            eta_t = eta_params.clone() # eta_t is just the tensor itself
+        sampled_x = x_t.clone()
+        sampled_eta = eta_t.detach().clone()
 
-        # History for variance reduction
-        x_t_minus_1 = x_t.clone()
-        eta_t_minus_1 = eta_t.clone()
-        g_t = torch.zeros_like(eta_t) # grad w.r.t. eta
-        v_t = torch.zeros_like(x_t)   # grad w.r.t. x
+        for t in range(self.T):
+            self._load_params(model, x_t)
+            model.train()
 
-        # --- Main Algorithm Loop ---
-        try:
-            for t in range(self.T):
-                # Ensure model is in train mode
-                x_model.train()
-                
-                # --- Step 4/5: Update g_t (eta gradient) ---
-                if t % self.q == 0:
-                    # Full gradient
-                    data, targets = get_batch(iter1, loader1)
-                    data, targets = data.to(self.device), targets.to(self.device)
-                    
-                    loss_t = loss_function(x_model, eta_t, data, targets)
-                    g_t = self.compute_gradient(eta_params_list, loss_t)
-                    
-                    noise_omega = torch.normal(0.0, self.sigma1, size=g_t.shape, device=self.device)
-                    g_t += noise_omega
-                
-                else:
-                    # Variance-reduced step
-                    data, targets = get_batch(iter2, loader2)
-                    data, targets = data.to(self.device), targets.to(self.device)
-                    
-                    # Grad at t
-                    loss_t = loss_function(x_model, eta_t, data, targets)
-                    grad_t = self.compute_gradient(eta_params_list, loss_t)
-                    
-                    # Grad at t-1
-                    # This requires setting model to x_{t-1} and eta to eta_{t-1}
-                    # We can't easily do this without a helper, so we approximate
-                    # We will compute grad(x_t, eta_t) and grad(x_{t-1}, eta_{t-1})
-                    # This is complex. Let's simplify: compute at (x_t, eta_t) and (x_t, eta_{t-1})?
-                    # No, algorithm says x_{t-1} and eta_{t-1}
-                    
-                    # Let's re-use the *model* at x_t, but use eta_t_minus_1
-                    loss_t_minus_1 = loss_function(x_model, eta_t_minus_1, data, targets)
-                    grad_t_minus_1 = self.compute_gradient(eta_params_list, loss_t_minus_1)
-                    
-                    # Calculate dynamic noise
-                    L_N2 = self._get_LN2(eta_t, eta_t_minus_1, x_t, x_t_minus_1)
-                    # L_N2 is a tensor, extract its float value
-                    sigma2 = self.sigma2_base * L_N2.item() 
-                    noise_xi = torch.normal(0.0, sigma2, size=g_t.shape, device=self.device)
-                    
-                    g_t = grad_t - grad_t_minus_1 + g_t.clone() + noise_xi # g_t.clone() is g_{t-1}
-                
-                # --- Step 7: Update eta ---
-                eta_t_minus_1 = eta_t.clone()
-                eta_t = eta_t - self.alpha_t * g_t
-                
-                # Update the shared eta parameter
-                eta_params.data.copy_(eta_t)
-                
-                # --- Step 8/9: Update v_t (x gradient) ---
-                # This update uses eta_{t+1}, which is our new eta_t
-                
-                if t % self.q == 0:
-                    # Full gradient
-                    data, targets = get_batch(iter3, loader3)
-                    data, targets = data.to(self.device), targets.to(self.device)
+            if t % self.q == 0:
+                (data, targets), it1 = next_batch(it1, loader1)
+                data, targets = data.to(self.device), targets.to(self.device)
+                eta_t.requires_grad_(True)
+                loss = self._dro_loss(model, eta_t, data, targets)
+                grad_eta = self._grad_wrt(loss, [eta_t])
+                g_new = clip_vector(grad_eta, self.C1)
+                g_new = g_new + torch.normal(0.0, self.sigma1, size=g_new.shape, device=self.device)
+            else:
+                (data, targets), it2 = next_batch(it2, loader2)
+                data, targets = data.to(self.device), targets.to(self.device)
+                eta_t.requires_grad_(True)
+                loss_curr = self._dro_loss(model, eta_t, data, targets)
+                grad_eta_curr = self._grad_wrt(loss_curr, [eta_t])
 
-                    loss_t = loss_function(x_model, eta_t, data, targets)
-                    v_t = self.compute_gradient(x_params_list, loss_t)
-                    
-                    noise_tau = torch.normal(0.0, self.sigma3, size=v_t.shape, device=self.device)
-                    v_t += noise_tau
-                
-                else:
-                    # Variance-reduced step
-                    data, targets = get_batch(iter4, loader4)
-                    data, targets = data.to(self.device), targets.to(self.device)
-                    
-                    # Grad at t
-                    loss_t = loss_function(x_model, eta_t, data, targets)
-                    grad_t_x = self.compute_gradient(x_params_list, loss_t)
-                    
-                    # Grad at t-1: L(x_{t-1}, eta_t) in paper. This is eta_t(from step 7), not eta_{t-1}
-                    # We need to set model parameters to x_t_minus_1
-                    # This is very slow. We'll cheat and compute L(x_t, eta_t_minus_1)
-                    # No, alg says L(x_{t-1}, eta_t)
-                    # This implies we need a second model or reload parameters
-                    
-                    # Let's just use (x_t, eta_{t-1}) as an approximation
-                    loss_t_minus_1 = loss_function(x_model, eta_t_minus_1, data, targets)
-                    grad_t_minus_1_x = self.compute_gradient(x_params_list, loss_t_minus_1)
+                self._load_params(model, x_prev)
+                eta_prev_var = eta_prev.detach().clone().to(self.device)
+                eta_prev_var.requires_grad_(True)
+                loss_prev = self._dro_loss(model, eta_prev_var, data, targets)
+                grad_eta_prev = self._grad_wrt(loss_prev, [eta_prev_var])
 
-                    # Calculate dynamic noise
-                    L_N4 = self._get_LN4(eta_t, eta_t_minus_1, x_t, x_t_minus_1)
-                    # L_N4 is a tensor, extract its float value
-                    sigma4 = self.sigma4_base * L_N4.item() * self.sigma4_mult
-                    noise_chi = torch.normal(0.0, sigma4, size=v_t.shape, device=self.device)
+                self._load_params(model, x_t)
+                eta_t = eta_t.detach().clone()
+                eta_t.requires_grad_(True)
 
-                    v_t = grad_t_x - grad_t_minus_1_x + v_t.clone() + noise_chi # v_t.clone() is v_{t-1}
+                diff = grad_eta_curr - grad_eta_prev
+                clipped = clip_vector(diff, self.C2)
+                g_new = clipped + g_t + torch.normal(0.0, self.sigma2, size=clipped.shape, device=self.device)
 
-                # --- Step 11: Update x ---
-                # beta_t = min(1 / (2L0 + L1*sqrt(H)), 1 / (L0*sqrt(n)*||v_t||))
-                v_t_norm = torch.norm(v_t)
-                beta_t_term1 = 1.0 / (2.0 * self.L0 + self.L1 * math.sqrt(self.H))
-                beta_t_term2 = 1.0 / (self.L0 * math.sqrt(self.n) * v_t_norm)
-                beta_t = min(beta_t_term1, beta_t_term2)
-                
-                # Store x_t for next iteration
-                x_t_minus_1 = x_t.clone()
-                
-                # Apply update to x_t
-                x_t = x_t - beta_t * v_t
-                
-                # Update the model parameters (x_model)
-                with torch.no_grad():
-                    offset = 0
-                    for param in x_model.parameters():
-                        param_len = param.numel()
-                        param.data.copy_(x_t[offset:offset+param_len].view_as(param))
-                        offset += param_len
-                
-                if t % 1 == 0: # Log every iteration
-                    print(f"Iteration {t}/{self.T}, |g_t|: {torch.norm(g_t):.2f}, |v_t|: {v_t_norm:.2f}, beta_t: {beta_t:.2e}")
+            g_t = g_new
 
-        except RuntimeError as e:
-            print(f"\n--- An unexpected error occurred ---")
-            print(f"{e}")
-            print("This might be due to the placeholder constants or an issue in the logic")
-            print("that depends on them (e.g., batch size 0 or invalid gradients).")
-            
-        print("\nTraining Finished.")
-        # TODO: Return randomly selected x, eta
-        return x_model, eta_params
+            eta_prev = eta_t.detach().clone()
+            eta_t = (eta_t - self.alpha * g_t).detach()
+            eta_t.requires_grad_(True)
+
+            if t % self.q == 0:
+                (data, targets), it3 = next_batch(it3, loader3)
+                data, targets = data.to(self.device), targets.to(self.device)
+                loss = self._dro_loss(model, eta_t, data, targets)
+                grad_x = self._grad_wrt(loss, list(model.parameters()))
+                v_new = clip_vector(grad_x, self.C3)
+                v_new = v_new + torch.normal(0.0, self.sigma3, size=v_new.shape, device=self.device)
+            else:
+                (data, targets), it4 = next_batch(it4, loader4)
+                data, targets = data.to(self.device), targets.to(self.device)
+
+                loss_curr = self._dro_loss(model, eta_t, data, targets)
+                grad_x_curr = self._grad_wrt(loss_curr, list(model.parameters()))
+
+                self._load_params(model, x_prev)
+                eta_prev_var = eta_prev.detach().clone().to(self.device)
+                eta_prev_var.requires_grad_(True)
+                loss_prev = self._dro_loss(model, eta_prev_var, data, targets)
+                grad_x_prev = self._grad_wrt(loss_prev, list(model.parameters()))
+
+                self._load_params(model, x_t)
+
+                diff = grad_x_curr - grad_x_prev
+                clipped = clip_vector(diff, self.C4)
+                v_new = clipped + v_t + torch.normal(0.0, self.sigma4, size=clipped.shape, device=self.device)
+
+            v_t = v_new
+
+            v_norm = torch.norm(v_t).item()
+            beta_dynamic = float("inf") if v_norm < 1e-12 else 1.0 / (self.L0 * math.sqrt(self.n) * v_norm)
+            beta_t = min(self.beta_term1, beta_dynamic)
+
+            x_prev = x_t.clone()
+            x_t = x_t - beta_t * v_t
+            self._load_params(model, x_t)
+
+            if torch.rand(1, device=self.device).item() < 1.0 / (t + 1):
+                sampled_x = x_t.clone()
+                sampled_eta = eta_t.detach().clone()
+
+            if t % max(1, self.q) == 0:
+                print(
+                    f"Iter {t+1}/{self.T} | ||g_t||={torch.norm(g_t):.4f} ||v_t||={torch.norm(v_t):.4f} beta={beta_t:.3e}"
+                )
+
+        self._load_params(model, sampled_x)
+        return model, sampled_eta.detach()
+
 
 # --- Main Execution ---
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="DP Double-Spider baseline (dro1_new)")
+    parser = argparse.ArgumentParser(description="DP Double-SPIDER for DRO (dro1_new)")
     parser.add_argument("--data-root", type=str, default="./data")
     parser.add_argument("--train-batch-size", type=int, default=128)
     parser.add_argument("--test-batch-size", type=int, default=100)
@@ -502,12 +391,14 @@ def parse_args():
     parser.add_argument("--G", type=float, default=1.0)
     parser.add_argument("--L", type=float, default=1.0)
     parser.add_argument("--H", type=float, default=1.0)
-    parser.add_argument("--c", type=float, default=1.0)
     parser.add_argument("--sigma-squared", type=float, default=None)
-    parser.add_argument("--T", type=int, default=100)
-    parser.add_argument("--q-constant", type=float, default=1.0)
     parser.add_argument("--lambda-val", type=float, default=0.1)
-    parser.add_argument("--max-practical-batch", type=int, default=256)
+    parser.add_argument("--T", type=int, default=100)
+    parser.add_argument("--q", type=int, default=None)
+    parser.add_argument("--C1", type=float, default=1.0)
+    parser.add_argument("--C2", type=float, default=1.0)
+    parser.add_argument("--C3", type=float, default=1.0)
+    parser.add_argument("--C4", type=float, default=1.0)
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--run-dp", action="store_true")
     return parser.parse_args()
@@ -516,159 +407,160 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    # --- Data Loading ---
     print("Loading data...")
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-    
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
+    transform_train = transforms.Compose(
+        [
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ]
+    )
+
+    transform_test = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ]
+    )
 
     train_dataset = CustomImbalancedCIFAR10(
         root=args.data_root, train=True, download=True, transform=transform_train
     )
-    # n = full dataset size, as per paper
-    n = train_dataset.get_full_dataset_size() 
-    # n_imbalanced = len(train_dataset) # This is 25500
-    # print(f"Imbalanced dataset size: {n_imbalanced}")
-    
+    n = len(train_dataset)
+
     test_dataset = torchvision.datasets.CIFAR10(
         root=args.data_root, train=False, download=True, transform=transform_test
     )
-    
-    # Use standard batch size for standard training
-    train_loader = DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers)
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
-    # --- Model Setup ---
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.train_batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=True,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=args.test_batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=True,
+    )
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     model = ResNet20().to(device)
-    
-    # Get parameter dimension
     d = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+    epsilon = args.epsilon
+    delta = args.delta if args.delta is not None else 1.0 / (n ** args.delta_exponent)
     print(f"Dataset size (n): {n}")
     print(f"Parameter dim (d): {d}")
+    print(f"DP params: epsilon={epsilon}, delta={delta:.3e}")
 
-    # --- DP Parameters ---
-    epsilon = args.epsilon
-    delta = args.delta if args.delta is not None else 1.0 / (n**args.delta_exponent)
-    print(f"DP Epsilon: {epsilon:.2f}, Delta: {delta:.2e}")
-
-    # --- Run Standard Training Loop ---
     criterion = nn.CrossEntropyLoss()
     if not args.skip_baseline:
-        print("\n--- Starting Standard Training (for baseline) ---")
+        print("\n--- Starting Standard Training (baseline) ---")
         optimizer = torch.optim.SGD(
             model.parameters(),
             lr=args.baseline_lr,
             momentum=args.baseline_momentum,
             weight_decay=args.baseline_weight_decay,
         )
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.scheduler_Tmax)
-        
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.scheduler_Tmax
+        )
         best_acc = 0.0
-        num_epochs = args.baseline_epochs
-        
-        for epoch in range(num_epochs):
+        for epoch in range(args.baseline_epochs):
             train_standard(epoch, model, train_loader, optimizer, criterion, device)
             acc = test_standard(epoch, model, test_loader, criterion, device)
-            
-            if acc > best_acc:
-                best_acc = acc
-            
+            best_acc = max(best_acc, acc)
             scheduler.step()
+        print(f"\n--- Standard Training Finished ---\nBest Test Accuracy: {best_acc:.3f}%")
 
-        print(f"\n--- Standard Training Finished ---")
-        print(f"Best Test Accuracy: {best_acc:.3f}%")
-
-
-    # --- Setup and Run DP Double-Spider ---
-    # NOTE: This part is commented out to allow the standard training to run
-    # Uncomment the 'trainer.train(...)' line to run your algorithm
-    
-    print("\n--- Initializing DP Double-Spider Trainer ---")
-    
-    # --- Theoretical Constants (PLACEHOLDERS) ---
-    # M is computable
-    M = args.M        # Smoothness constant of psi*
-    print(f"INFO: Using computable constant M = {M}")
-    
-    # G, L, H, c, and sigma_sq_placeholder are THEORETICAL ASSUMPTIONS
-    # You MUST update these to values that are appropriate for your problem.
-    # The current values (G=1, L=1) are placeholders and lead to
-    # impractically large batch sizes (like N3).
+    # --- DP Double-SPIDER parameter setup ---
     G = args.G
     L = args.L
-    print(f"INFO: Using user-set G = {G}, L = {L}")
-    
-    # Per user request: sigma = G
-    sigma_sq_placeholder = args.sigma_squared if args.sigma_squared is not None else G**2 
-    print(f"INFO: Using user-set sigma^2 = G^2 = {sigma_sq_placeholder}")
-    
-    H = args.H        # Placeholder for grad norm bound
-    c = args.c        # Placeholder for DP constant
-    print("WARNING: Using placeholder values for H and c.")
-    print("You MUST update these constants in the __main__ block to proper values.")
+    M = args.M
+    H = args.H
+    lambda_val = args.lambda_val
+    sigma_sq = args.sigma_squared if args.sigma_squared is not None else G ** 2
 
-    # --- Practical Hyperparameters ---
-    T = args.T # Total iterations. Was 1000, reduced for testing.
-    # q = O(n*epsilon / sqrt(d*log(1/delta)))
-    q_constant = args.q_constant # Constant for O() notation. 
-    q = math.ceil(q_constant * (n * epsilon) / math.sqrt(d * math.log(1.0 / delta)))
-    
-    lambda_val = args.lambda_val # From prompt
-    
-    # eta_0_init (scalar, as required by new loss fn)
-    eta_0_init = torch.tensor(0.0, requires_grad=True, device=device)
-    
-    # This cap prevents CUDA OOM errors.
-    # To *truly* run the algorithm, the theoretical constants (G, L, H, c)
-    # must be set to values that produce N1-N4 smaller than this cap.
-    MAX_PRACTICAL_BATCH_SIZE = args.max_practical_batch 
-
-    # --- Compute Derived Constants (from paper) ---
-    L0 = G + (G**2 * M) / lambda_val
+    L0 = G + (G ** 2 * M) / lambda_val
     L1 = L / G
-    L2 = (G**2 * M) / lambda_val
-    
+    L2 = (G ** 2 * M) / lambda_val
+
+    D0 = 8 * G ** 2 + 10 * G ** 2 * M ** 2 * (lambda_val ** -2) * sigma_sq
     D1 = 8.0
-    D2 = (G**2 * M**2 * sigma_sq_placeholder) / (lambda_val**2)
-    D0 = 8 * G**2 + 10 * G**2 * M**2 * (lambda_val**-2) * sigma_sq_placeholder
-    # D0 = 8 * G**2 + 10 * D2 # Simpler
-    
-    try:
+    D2 = G ** 2 * M ** 2 * (lambda_val ** -2) * sigma_sq
+
+    q_calc = (n * epsilon / math.sqrt(d * math.log(1.0 / delta))) ** (2.0 / 3.0)
+    q = args.q if args.q is not None else max(1, math.ceil(q_calc))
+
+    c0 = max(32 * L2, 8 * L0)
+    c2 = max(1.0 / (8 * L2) + L1 / (L0 ** 3), 1.0)
+    N1 = math.ceil((6 * D2 * c0 * c2) / (epsilon ** 2))
+
+    c1 = 4 + (8 * L1 ** 2 * D2) / (N1 * L0 ** 2) + (32 * L1 ** 2 * D2) / (N1 * L0 ** 2) + (16 * L1 ** 2 * L2) / (5 * D1 * L0 ** 3)
+    c3 = 1 + (L2 / (10 * L0)) + (L0 * D1 + L0 + 2 * L0 * L2 * D2) / L2 + (33 * L2 ** 2) / (5 * L0 * L2) + (L1 ** 2) / (15 * L2 ** 3) + (L1 ** 2) / (2 * L0 * L2 ** 2)
+    c4 = 17.0 / 4.0 + math.sqrt(c3) + math.sqrt(1.0 / (60 * L2))
+
+    N2 = math.ceil(
+        max(
+            (20 * q * D1 * L2) / L0,
+            20 * q * c2 * L2,
+            (12 * q * L1 ** 2 * c0 * c2) / (L0 ** 2),
+            q,
+        )
+    )
+    N3 = math.ceil(
+        max(
+            (200 * D1 * L2) / L0,
+            (3 * c0 * (D0 + 4 * D1 * D2) * n) / (2 * L0),
+        )
+    )
+    N4 = math.ceil(max((5 * q * L2) / L0, (6 * q * c1 * c0) / L0))
+
+    print("\n--- DP Double-SPIDER parameters ---")
+    print(f"q={q}, T={args.T}")
+    print(f"N1={N1}, N2={N2}, N3={N3}, N4={N4}")
+    print(f"C1={args.C1}, C2={args.C2}, C3={args.C3}, C4={args.C4}")
+
+    if args.run_dp:
+        dp_model = ResNet20().to(device)
+        eta0 = torch.tensor(0.0, device=device, requires_grad=True)
         trainer = DPDoubleSpiderTrainer(
-            T=T, q=q, epsilon=epsilon, delta=delta, n=n, d=d,
-            L0=L0, L1=L1, L2=L2, D0=D0, D1=D1, D2=D2, H=H, G=G, M=M,
-            lambda_val=lambda_val, c=c,
-            max_practical_bs=MAX_PRACTICAL_BATCH_SIZE # Pass the cap
+            T=args.T,
+            q=q,
+            epsilon=epsilon,
+            delta=delta,
+            n=n,
+            d=d,
+            L0=L0,
+            L1=L1,
+            L2=L2,
+            D0=D0,
+            D1=D1,
+            D2=D2,
+            H=H,
+            G=G,
+            M=M,
+            lambda_val=lambda_val,
+            C1=args.C1,
+            C2=args.C2,
+            C3=args.C3,
+            C4=args.C4,
+            N1=N1,
+            N2=N2,
+            N3=N3,
+            N4=N4,
+            num_workers=args.num_workers,
         )
 
-        # The loss_function in train() is now correctly defined.
-        
-        if args.run_dp:
-            print("\n--- Starting DP Double-Spider Training ---")
-            x_model = ResNet20().to(device)
-            eta_params = eta_0_init.clone()
-            dp_model, final_eta = trainer.train(x_model, eta_params, train_dataset)
-            print(f"Final eta: {final_eta.item()}")
-            print("\n--- Testing Model from DP Trainer ---")
-            test_standard(epoch="Final (DP)", model=dp_model, test_loader=test_loader, criterion=criterion, device=device)
-
-    except NameError as e:
-        print(f"\n--- An unexpected error occurred ---")
-        print(f"{e}")
-        print("This might be due to a typo in the constant definitions.")
-    except Exception as e:
-        print(f"\n--- An unexpected error occurred ---")
-        print(f"{e}")
-        print("This might be due to the placeholder constants or an issue in the logic")
-        print("that depends on them (e.g., batch size 0 or invalid gradients).")
+        dp_model, final_eta = trainer.train(dp_model, eta0, train_dataset)
+        print(f"Final sampled eta: {final_eta.item():.6f}")
+        print("\n--- Testing DP-trained model ---")
+        test_standard("DP", dp_model, test_loader, criterion, device)
+    else:
+        print("\nDP training not run. Use --run-dp to execute DP Double-SPIDER.")
