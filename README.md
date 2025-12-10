@@ -14,6 +14,34 @@ All paths below are relative to the repo root (`/home/Arnold/Code`).
 - Extra packages for MIA: `numpy`, `scikit-learn`, `matplotlib`.
 - CIFAR-10 is downloaded automatically into `./data` on first use.
 
+## 一键跑全套：`run_all_projects.sh`
+
+位于仓库根目录，依次跑 Baseline/SGDA、Baseline/Diff、`dro1_new`、`dro2_new`，默认 `epsilon` 取 `5 10`，每个 `epsilon` 跑 5 次（随机种子自动生成），输出写到 `multi_results/`。
+
+### 用法
+
+```bash
+bash run_all_projects.sh
+```
+
+常用环境变量（可选）：
+
+- `EPS_LIST="0.2 0.5 1"`：覆盖默认的 epsilon 列表。
+- `REPEAT_COUNT=3`：每个 epsilon 重复次数。
+- `CIFAR_TORCH_ROOT=/path/to/data`：数据目录（默认 `Baseline/SGDA/data`）。
+- `RESULTS_DIR=/path/to/out`：结果根目录（默认 `multi_results/`）。
+
+示例：
+
+```bash
+EPS_LIST="0.5 1 5" REPEAT_COUNT=3 RESULTS_DIR=/tmp/multi_out bash run_all_projects.sh
+```
+
+生成内容：
+
+- 每个算法/epsilon/run 的日志与输出文件夹，例如 `multi_results/dro2_new_eps5_run1/train.log`。
+- 汇总表 `multi_results/summary.txt`，包含各 epsilon 下四个算法的平均准确率（字段解析自各自日志/summary）。
+
 ## `dro1_new` – DP Double-SPIDER baseline
 
 Implements the Double-SPIDER algorithm with DP noise on an imbalanced CIFAR-10 split (classes 0–4 keep only the last 100 samples; classes 5–9 keep all 5k). Uses a CIFAR-style ResNet20.
