@@ -99,6 +99,7 @@ run_dro1_new() {
         --baseline-epochs 20 \
         --epsilon "${eps}" \
         --run-dp \
+        --output-dir "${out_dir}" \
         --save-model \
         2>&1 | tee "${out_dir}/train.log"
     )
@@ -220,8 +221,8 @@ PY
 }
 
 for eps in "${EPS_VALUES[@]}"; do
-  run_baseline_sgda "${eps}"
-  run_baseline_diff "${eps}"
+  # run_baseline_sgda "${eps}"
+  # run_baseline_diff "${eps}"
   run_dro1_new "${eps}"
   run_dro2_new "${eps}"
 done

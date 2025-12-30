@@ -41,7 +41,6 @@ run_baseline_sgda() {
         --data_root "${CIFAR_TORCH_ROOT}" \
         --batch_size 128 \
         --epsilon "${eps}" \
-        --run-dp \
         --save-model \
         --total_epochs 30 \
         --save-model \
@@ -69,7 +68,6 @@ run_baseline_diff() {
         --data_root "${CIFAR_TORCH_ROOT}" \
         --batch_size 128 \
         --epsilon "${eps}" \
-        --run-dp \
         --save-model \
         --total_epochs 30 \
         --save-model \
@@ -222,8 +220,8 @@ PY
 for eps in "${EPS_VALUES[@]}"; do
   run_baseline_sgda "${eps}"
   run_baseline_diff "${eps}"
-  run_dro1_new "${eps}"
-  run_dro2_new "${eps}"
+  # run_dro1_new "${eps}"
+  # run_dro2_new "${eps}"
 done
 write_summary
 

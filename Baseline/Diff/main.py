@@ -114,6 +114,12 @@ def train(args):
             }, fh, indent=2)
 
 
+
+    if args.save_model and args.output_dir:
+        ckpt_path = os.path.join(args.output_dir, "checkpoint.pt")
+        torch.save(model.state_dict(), ckpt_path)
+        print(f"Checkpoint saved to {ckpt_path}")
+
 parser = argparse.ArgumentParser(description='DP PrivateDiff on CIFAR10-ST.')
 parser.add_argument('--epsilon', default=4.0, type=float, help='Param of differential privacy')
 parser.add_argument("--c1", default=1, type=float, help="value of gradient clip")
@@ -130,6 +136,7 @@ parser.add_argument("--total_epochs", default=30, type=int, help="epoch")
 parser.add_argument("--data_root", default="./data", type=str, help="CIFAR10 root directory")
 parser.add_argument("--workers", default=2, type=int, help="dataloader workers")
 parser.add_argument("--output_dir", default=None, type=str, help="Directory to store result summary")
+parser.add_argument("--save-model", action="store_true", help="Save the trained model checkpoint")
 
 if __name__ == "__main__":
     args = parser.parse_args()

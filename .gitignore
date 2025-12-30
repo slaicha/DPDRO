@@ -8,3 +8,19 @@ MIA/outputs/
 # Python bytecode and caches
 __pycache__/
 *.pyc
+
+# Local Environments
+miniconda3/
+miniconda.sh
+
+# Secrets
+keys/
+
+# Experiment Results
+multi_results/
+MIA/shadows/
+wandb/
+*.log
+
+# Jupyter
+.ipynb_checkpoints/

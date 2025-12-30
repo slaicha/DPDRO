@@ -1,3 +1,4 @@
+import os
 import argparse
 import torch
 import torch.nn as nn
@@ -47,7 +48,7 @@ class ResNetImpl(nn.Module):
         self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
-        self.linear = nn.Linear(64 * block.expansion, num_classes)
+        self.fc = nn.Linear(64 * block.expansion, num_classes)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1] * (num_blocks - 1)
@@ -64,7 +65,7 @@ class ResNetImpl(nn.Module):
         out = self.layer3(out)
         out = F.avg_pool2d(out, 8)
         out = out.view(out.size(0), -1)
-        out = self.linear(out)
+        out = self.fc(out)
         return out
 
 
@@ -241,6 +242,39 @@ class DPDoubleSpiderTrainer:
         grads = torch.autograd.grad(loss, params, retain_graph=False, create_graph=False, allow_unused=False)
         return torch.cat([g.view(-1) for g in grads])
 
+    def _compute_gradient(self, model, eta_t, data, targets, params):
+        # Chunk size for gradient accumulation to avoid OOM
+        chunk_size = 256
+        n_total = len(data)
+        
+        # If batch fits in one chunk, process normally
+        if n_total <= chunk_size:
+            data_d = data.to(self.device)
+            targets_d = targets.to(self.device)
+            loss = self._dro_loss(model, eta_t, data_d, targets_d)
+            return self._grad_wrt(loss, params)
+        
+        # Accumulate gradients
+        total_grads = None
+        
+        # data and targets are CPU tensors here
+        for i in range(0, n_total, chunk_size):
+            d_batch = data[i : i + chunk_size].to(self.device)
+            t_batch = targets[i : i + chunk_size].to(self.device)
+            
+            current_batch_size = len(d_batch)
+            weight = current_batch_size / n_total
+            
+            loss = self._dro_loss(model, eta_t, d_batch, t_batch)
+            grads = self._grad_wrt(loss, params)
+            
+            if total_grads is None:
+                total_grads = grads * weight
+            else:
+                total_grads += grads * weight
+                
+        return total_grads
+
     @staticmethod
     def _psi_star(t):
         return 0.25 * t ** 2 + t
@@ -288,24 +322,26 @@ class DPDoubleSpiderTrainer:
 
             if t % self.q == 0:
                 (data, targets), it1 = next_batch(it1, loader1)
-                data, targets = data.to(self.device), targets.to(self.device)
+                # data, targets are kept on CPU initially to allow chunking
                 eta_t.requires_grad_(True)
-                loss = self._dro_loss(model, eta_t, data, targets)
-                grad_eta = self._grad_wrt(loss, [eta_t])
+                # compute gradient with accumulation
+                grad_eta = self._compute_gradient(model, eta_t, data, targets, [eta_t])
+                
                 g_new = clip_vector(grad_eta, self.C1)
                 g_new = g_new + torch.normal(0.0, self.sigma1, size=g_new.shape, device=self.device)
             else:
                 (data, targets), it2 = next_batch(it2, loader2)
-                data, targets = data.to(self.device), targets.to(self.device)
                 eta_t.requires_grad_(True)
-                loss_curr = self._dro_loss(model, eta_t, data, targets)
-                grad_eta_curr = self._grad_wrt(loss_curr, [eta_t])
+                
+                # Current gradient
+                grad_eta_curr = self._compute_gradient(model, eta_t, data, targets, [eta_t])
 
                 self._load_params(model, x_prev)
                 eta_prev_var = eta_prev.detach().clone().to(self.device)
                 eta_prev_var.requires_grad_(True)
-                loss_prev = self._dro_loss(model, eta_prev_var, data, targets)
-                grad_eta_prev = self._grad_wrt(loss_prev, [eta_prev_var])
+                
+                # Previous gradient
+                grad_eta_prev = self._compute_gradient(model, eta_prev_var, data, targets, [eta_prev_var])
 
                 self._load_params(model, x_t)
                 eta_t = eta_t.detach().clone()
@@ -323,23 +359,21 @@ class DPDoubleSpiderTrainer:
 
             if t % self.q == 0:
                 (data, targets), it3 = next_batch(it3, loader3)
-                data, targets = data.to(self.device), targets.to(self.device)
-                loss = self._dro_loss(model, eta_t, data, targets)
-                grad_x = self._grad_wrt(loss, list(model.parameters()))
+                
+                grad_x = self._compute_gradient(model, eta_t, data, targets, list(model.parameters()))
+                
                 v_new = clip_vector(grad_x, self.C3)
                 v_new = v_new + torch.normal(0.0, self.sigma3, size=v_new.shape, device=self.device)
             else:
                 (data, targets), it4 = next_batch(it4, loader4)
-                data, targets = data.to(self.device), targets.to(self.device)
 
-                loss_curr = self._dro_loss(model, eta_t, data, targets)
-                grad_x_curr = self._grad_wrt(loss_curr, list(model.parameters()))
+                grad_x_curr = self._compute_gradient(model, eta_t, data, targets, list(model.parameters()))
 
                 self._load_params(model, x_prev)
                 eta_prev_var = eta_prev.detach().clone().to(self.device)
                 eta_prev_var.requires_grad_(True)
-                loss_prev = self._dro_loss(model, eta_prev_var, data, targets)
-                grad_x_prev = self._grad_wrt(loss_prev, list(model.parameters()))
+                
+                grad_x_prev = self._compute_gradient(model, eta_prev_var, data, targets, list(model.parameters()))
 
                 self._load_params(model, x_t)
 
@@ -401,6 +435,8 @@ def parse_args():
     parser.add_argument("--C4", type=float, default=1.0)
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--run-dp", action="store_true")
+    parser.add_argument("--output-dir", type=str, default=".")
+    parser.add_argument("--save-model", action="store_true")
     return parser.parse_args()
 
 
@@ -529,6 +565,9 @@ if __name__ == "__main__":
 
     if args.run_dp:
         dp_model = ResNet20().to(device)
+        if not args.skip_baseline:
+            print("Initializing DP model from baseline weights...")
+            dp_model.load_state_dict(model.state_dict())
         eta0 = torch.tensor(0.0, device=device, requires_grad=True)
         trainer = DPDoubleSpiderTrainer(
             T=args.T,
@@ -564,3 +603,13 @@ if __name__ == "__main__":
         test_standard("DP", dp_model, test_loader, criterion, device)
     else:
         print("\nDP training not run. Use --run-dp to execute DP Double-SPIDER.")
+
+    if args.save_model:
+        checkpoint_path = os.path.join(args.output_dir, "checkpoint.pt")
+        os.makedirs(args.output_dir, exist_ok=True)
+        final_model = model
+        if args.run_dp and 'dp_model' in locals():
+            final_model = dp_model
+        torch.save(final_model.state_dict(), checkpoint_path)
+        print(f"Checkpoint saved to {checkpoint_path}")
+

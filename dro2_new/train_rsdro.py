@@ -233,7 +233,7 @@ def main() -> None:
     )
     if not sample_check.satisfied:
         print(
-            "[Warning] Sample size condition violated: n must be >= max{:.2f, {:.2f}}".format(
+            "[Warning] Sample size condition violated: n must be >= max({:.2f}, {:.2f})".format(
                 sample_check.required_n, sample_check.required_n_alt
             )
         )

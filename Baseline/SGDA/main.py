@@ -117,6 +117,12 @@ def train(setup, args, device):
             }, fh, indent=2)
 
 
+
+    if args.save_model and args.output_dir:
+        ckpt_path = os.path.join(args.output_dir, "checkpoint.pt")
+        torch.save(setup["model"].state_dict(), ckpt_path)
+        print(f"Checkpoint saved to {ckpt_path}")
+
 def parse_args():
     parser = argparse.ArgumentParser(description="DP-SGDA on CIFAR10-ST")
     parser.add_argument("--data_root", default="./data", type=str, help="Dataset storage root")
@@ -131,6 +137,7 @@ def parse_args():
     parser.add_argument("--seed", default=0, type=int, help="Random seed")
     parser.add_argument("--workers", default=2, type=int, help="Number of dataloader workers")
     parser.add_argument("--output_dir", default=None, type=str, help="Directory to store result summary")
+    parser.add_argument("--save-model", action="store_true", help="Save the trained model checkpoint")
     return parser.parse_args()
 
 
