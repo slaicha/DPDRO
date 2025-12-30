@@ -1,18 +1,18 @@
 # DPDRO Experiment Results Report
 
-This document details the final performance metrics for all trained models, including both **Test Accuracy** (Utility) and **Membership Inference Attack (MIA)** success rates (Privacy Leakage).
+This document details the final performance metrics for all trained models, including both Test Accuracy and Membership Inference Attack (MIA) success rates.
 
 ## 1. Experimental Setup
 
-- **Dataset**: CIFAR10-ST (Skewed Training Data).
-- **Privacy Budget**: $\epsilon \in \{5, 10\}$.
-- **Repeated Runs**: 5 independent runs per configuration.
+- Dataset: CIFAR10-ST (Skewed Training Data).
+- Privacy Budget: $\epsilon \in \{5, 10\}$.
+- Repeated Runs: 5 independent runs per configuration.
 
 ### Algorithms Evaluated
-1.  **Baseline (SGDA)**: Differentially Private Stochastic Gradient Descent with Adaptive Clipping.
-2.  **Baseline (Diff)**: Private Diffusion-based Optimization.
-3.  **DRO1 (Double-SPIDER)**: DP Distributionally Robust Optimization (initialized with pre-trained weights).
-4.  **DRO2 (RS-DRO)**: Recursive Spider DRO (trained from scratch with small models).
+1.  Baseline (SGDA): Differentially Private Stochastic Gradient Descent with Adaptive Clipping.
+2.  Baseline (Diff): Private Diffusion-based Optimization.
+3.  DRO1 (Double-SPIDER): DP Distributionally Robust Optimization (initialized with pre-trained weights).
+4.  DRO2 (RS-DRO): Recursive Spider DRO (trained from scratch with small models).
 
 ---
 
@@ -22,19 +22,19 @@ This document details the final performance metrics for all trained models, incl
 | :--- | :---: | :---: | :---: |
 | **Baseline (SGDA)** | 5 | 53.59 | 0.94 (High) |
 | **Baseline (Diff)** | 5 | 53.34 | 0.96 (High) |
-| **DRO1 (Double-SPIDER)** | 5 | **56.38** | **0.97 (Highest)** |
-| **DRO2 (RS-DRO)** | 5 | 55.18 | **0.80 (Lowest)** |
+| **DRO1 (Double-SPIDER)** | 5 | **56.38** | **0.97** |
+| **DRO2 (RS-DRO)** | 5 | 55.18 | **0.80** |
 | | | | |
 | **Baseline (SGDA)** | 10 | 54.34 | 0.95 (High) |
 | **Baseline (Diff)** | 10 | 54.17 | 0.96 (High) |
-| **DRO1 (Double-SPIDER)** | 10 | **56.92** | **0.97 (Highest)** |
-| **DRO2 (RS-DRO)** | 10 | 56.89 | **0.78 (Lowest)** |
+| **DRO1 (Double-SPIDER)** | 10 | **56.92** | **0.97** |
+| **DRO2 (RS-DRO)** | 10 | 56.89 | **0.78** |
 
-**Key Finding**: **DRO2 (RS-DRO)** offers the best trade-off. It provides competitive accuracy (~56%) while significantly improving privacy protections (AUC 0.80) compared to all other methods (AUC > 0.94).
+DRO2 (RS-DRO) offers the best trade-off. It provides competitive accuracy (~56%) while significantly improving privacy protections (AUC 0.80) compared to all other methods (AUC > 0.94).
 
 ---
 
-## 3. Detailed Training Results (Test Accuracy)
+## 3. Training Results (Test Accuracy)
 
 Values represent the mean accuracy of the final model on the held-out test set, averaged over 5 runs.
 
@@ -47,9 +47,9 @@ Values represent the mean accuracy of the final model on the held-out test set, 
 
 ---
 
-## 4. Detailed MIA Results (Privacy Leakage)
+## 4. MIA Results (Privacy Leakage)
 
-We performed **Membership Inference Attacks (MIA)** using two metrics strings:
+We performed MIA using two metrics strings:
 -   **Confidence-based**: Uses the model's prediction confidence on the true class.
 -   **Loss-based**: Uses the request's cross-entropy loss (stronger attack).
 
@@ -87,12 +87,11 @@ We performed **Membership Inference Attacks (MIA)** using two metrics strings:
 
 ## 5. Analysis & Conclusions
 
-1.  **Warm-Starting Compromises Privacy (DRO1)**:
+1.  Warm-Starting Compromises Privacy (DRO1):
     -   DRO1 was initialized with a pre-trained non-private model (accuracy ~55%) to solve convergence issues.
     -   While this achieved high final accuracy, the MIA results (AUC > 0.97) show that the subsequent DP training phase was insufficient to "hide" the memorable samples from the initialization.
-    -   **Result**: DRO1 behaves almost like a non-private model in terms of leakage.
+    -   DRO1 behaves almost like a non-private model in terms of leakage.
 
-2.  **RS-DRO is Robust (DRO2)**:
+2.  RS-DRO is Robust (DRO2):
     -   DRO2 was trained from scratch with a smaller architecture (`width-factor=0.5`).
     -   It demonstrates significantly lower leakage (AUC ~0.78-0.80) while matching the accuracy of the other methods.
-    -   **Recommendation**: For applications requiring strict privacy guarantees, **DRO2** is the preferred method.

@@ -32,13 +32,8 @@ This document tracks execution-critical changes applied to the DPDRO repository 
     - Chunks are moved to GPU sequentially, gradients are computed and accumulated on the accumulation tensor.
     - This allows processing arbitrarily large "logical" batches with constant peak VRAM usage.
 
-## 3. Configuration Fixes
 
-### run_dro.sh
-- **Issue**: `dro1_new` was saving checkpoints to the current working directory (`./checkpoint.pt`) because the output directory argument was missing.
-- **Fix**: Added `--output-dir "${out_dir}"` to the `run_dro1_new` function invocation.
-
-## 4. Accuracy Fix (Warm Start)
+## 3. Accuracy Fix (Warm Start)
 
 ### dro1_new/algorithm.py
 - **Issue**: The code trained a baseline model (Standard SGD) to ~55% accuracy but discarded it, initializing a fresh random model for the DP phase. With strict privacy noise, this random model failed to learn (8% accuracy).
