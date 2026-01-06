@@ -2,7 +2,11 @@
 set -euo pipefail
 
 # Iterate over epsilons and runs
-for eps in 5 10; do
+# Iterate over epsilons and runs
+for eps in 0.1 1 3 5 8 10; do
+  # Format epsilon for directory names (0.1 -> 0p1)
+  eps_tag="${eps//./p}"
+
   for run in {1..5}; do
     echo "=================================================================="
     echo "Processing Epsilon=${eps}, Run=${run}"
@@ -12,7 +16,7 @@ for eps in 5 10; do
     # Path format: multi_results/dro1_new_eps${eps}_run${run}/checkpoint.pt
     # Width Factor: 1.0
     
-    DRO1_DIR="multi_results/dro1_new_eps${eps}_run${run}"
+    DRO1_DIR="multi_results/dro1_new_eps${eps_tag}_run${run}"
     DRO1_CKPT="${DRO1_DIR}/checkpoint.pt"
     DRO1_OUT="MIA/outputs/dro1_eps${eps}_run${run}"
 
@@ -35,7 +39,7 @@ for eps in 5 10; do
     # Path format: multi_results/dro2_new_eps${eps}_run${run}/rsdro_resnet20.pt
     # Width Factor: 0.5
     
-    DRO2_DIR="multi_results/dro2_new_eps${eps}_run${run}"
+    DRO2_DIR="multi_results/dro2_new_eps${eps_tag}_run${run}"
     DRO2_CKPT="${DRO2_DIR}/rsdro_resnet20.pt"
     DRO2_OUT="MIA/outputs/dro2_eps${eps}_run${run}"
 
@@ -58,7 +62,7 @@ for eps in 5 10; do
     # Path format: multi_results/Baseline_SGDA_eps${eps}_run${run}/checkpoint.pt
     # Width Factor: 1.0
 
-    SGDA_DIR="multi_results/Baseline_SGDA_eps${eps}_run${run}"
+    SGDA_DIR="multi_results/Baseline_SGDA_eps${eps_tag}_run${run}"
     SGDA_CKPT="${SGDA_DIR}/checkpoint.pt"
     SGDA_OUT="MIA/outputs/Baseline_SGDA_eps${eps}_run${run}"
 
@@ -81,7 +85,7 @@ for eps in 5 10; do
     # Path format: multi_results/Baseline_Diff_eps${eps}_run${run}/checkpoint.pt
     # Width Factor: 1.0
 
-    DIFF_DIR="multi_results/Baseline_Diff_eps${eps}_run${run}"
+    DIFF_DIR="multi_results/Baseline_Diff_eps${eps_tag}_run${run}"
     DIFF_CKPT="${DIFF_DIR}/checkpoint.pt"
     DIFF_OUT="MIA/outputs/Baseline_Diff_eps${eps}_run${run}"
 
